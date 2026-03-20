@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>老闆戰情室 - 管理後台</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; padding: 0; background-color: #f0f2f5; color: #333; }
+        header { background-color: #1a237e; color: white; padding: 15px 20px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .container { max-width: 1000px; margin: 20px auto; padding: 0 20px; }
+        
+        /* 區塊共同樣式 */
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 30px; }
+        h2 { margin-top: 0; border-bottom: 2px solid #eee; padding-bottom: 10px; color: #1a237e; }
+        
+        /* 表單樣式 */
+        .form-group { display: flex; gap: 10px; margin-bottom: 15px; }
+        .form-group input, .form-group select { padding: 10px; border: 1px solid #ccc; border-radius: 4px; flex: 1; }
+        .btn-add { background-color: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn-add:hover { background-color: #218838; }
+
+        /* 表格樣式 */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #f8f9fa; font-weight: bold; }
+        tr:hover { background-color: #f1f1f1; }
+        
+        /* 狀態標籤與按鈕 */
+        .status-badge { padding: 5px 10px; border-radius: 12px; font-size: 0.85em; font-weight: bold; }
+        .status-new { background-color: #ffeeba; color: #856404; }
+        .status-shipped { background-color: #d4edda; color: #155724; }
+        .btn-ship { background-color: #007bff; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.9em; }
+        .btn-ship:hover { background-color: #0056b3; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h2>💼 商店管理後台 (Admin Dashboard)</h2>
+    </header>
+
+    <div class="container">
+        <!-- 上半部：新增商品區 -->
+        <div class="card">
+            <h2>📦 上架新商品</h2>
+            <div class="form-group">
+                <input type="text" id="newProductName" placeholder="商品名稱 (例如：機械鍵盤)">
+                <input type="number" id="newProductPrice" placeholder="價格 (例如：2500)">
+                <select id="newProductCategory">
+                    <option value="3C/家電">3C/家電</option>
+                    <option value="運動用品">運動用品</option>
+                    <option value="食品/飲品">食品/飲品</option>
+                    <option value="其他">其他</option>
+                </select>
+                <button class="btn-add" onclick="addNewProduct()">確認上架</button>
+            </div>
+        </div>
+
+        <!-- 下半部：訂單管理區 -->
+        <div class="card">
+            <h2>🛒 客戶訂單管理</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>時間</th>
+                        <th>收件人</th>
+                        <th>聯絡電話</th>
+                        <th>總金額</th>
+                        <th>狀態</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="orderTableBody">
+                    <tr><td colspan="6" style="text-align:center; color:#888;">正在載入訂單資料...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 引入 Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+    <script>
+        // ！！！請替換成你的真實金鑰！！！
+        const firebaseConfig = {
+            apiKey: "請貼上你的_API_KEY",
+            authDomain: "請貼上你的_AUTH_DOMAIN",
+            projectId: "請貼上你的_PROJECT_ID",
+            storageBucket: "請貼上你的_STORAGE_BUCKET",
+            messagingSenderId: "請貼上你的_MESSAGING_SENDER_ID",
+            appId: "請貼上你的_APP_ID"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        // ==========================================
+        // 📦 1. 上架新商品功能
+        // ==========================================
+        function addNewProduct() {
+            const name = document.getElementById("newProductName").value.trim();
+            const price = parseInt(document.getElementById("newProductPrice").value);
+            const category = document.getElementById("newProductCategory").value;
+
+            if (!name || isNaN(price)) {
+                alert("請填寫完整的商品名稱與價格！");
+                return;
+            }
+
+            // 寫入 Firebase 的 products 集合
+            db.collection("products").add({
+                name: name,
+                price: price,
+                category: category
+            }).then(() => {
+                alert("✅ 商品上架成功！前台網站已經同步更新。");
+                // 清空輸入框
+                document.getElementById("newProductName").value = "";
+                document.getElementById("newProductPrice").value = "";
+            }).catch((error) => {
+                console.error("上架失敗:", error);
+                alert("上架失敗，請檢查權限設定。");
+            });
+        }
+
+        // ==========================================
+        // 🛒 2. 即時監聽訂單功能
+        // ==========================================
+        function listenForOrders() {
+            const orderTableBody = document.getElementById("orderTableBody");
+
+            // 監聽 orders 集合，照時間新到舊排序
+            db.collection("orders").orderBy("createdAt", "desc").onSnapshot((querySnapshot) => {
+                orderTableBody.innerHTML = ""; 
+
+                if (querySnapshot.empty) {
+                    orderTableBody.innerHTML = "<tr><td colspan='6' style='text-align:center; color:#888;'>目前還沒有任何訂單喔！</td></tr>";
+                    return;
+                }
+
+                querySnapshot.forEach((doc) => {
+                    const order = doc.data();
+                    const orderId = doc.id; // 訂單專屬 ID
+                    const dateStr = order.createdAt ? order.createdAt.toDate().toLocaleString() : "剛剛";
+                    
+                    // 判斷狀態給予不同顏色
+                    let statusHtml = "";
+                    let actionHtml = "";
+
+                    if (order.status === "新訂單") {
+                        statusHtml = `<span class="status-badge status-new">新訂單</span>`;
+                        actionHtml = `<button class="btn-ship" onclick="markAsShipped('${orderId}')">標記出貨</button>`;
+                    } else {
+                        statusHtml = `<span class="status-badge status-shipped">已出貨</span>`;
+                        actionHtml = `<span style="color:#aaa; font-size:0.9em;">處理完畢</span>`;
+                    }
+
+                    // 把資料塞進表格裡
+                    orderTableBody.innerHTML += `
+                        <tr>
+                            <td style="font-size: 0.9em; color: #555;">${dateStr}</td>
+                            <td><strong>${order.buyerName}</strong><br><span style="font-size: 0.8em; color: #888;">${order.buyerAddress}</span></td>
+                            <td>${order.buyerPhone}</td>
+                            <td style="color: #e44d26; font-weight: bold;">NT$${order.totalAmount.toLocaleString()}</td>
+                            <td>${statusHtml}</td>
+                            <td>${actionHtml}</td>
+                        </tr>
+                    `;
+                });
+            });
+        }
+
+        // ==========================================
+        // 🚚 3. 標記訂單為已出貨
+        // ==========================================
+        function markAsShipped(orderId) {
+            if(confirm("確定要把這筆訂單標記為「已出貨」嗎？")) {
+                // 更新指定 ID 訂單的 status 欄位
+                db.collection("orders").doc(orderId).update({
+                    status: "已出貨"
+                }).then(() => {
+                    console.log("狀態更新成功！");
+                    // 注意：這裡不用重新讀取表格，因為 onSnapshot 會自動即時更新畫面！
+                }).catch((error) => {
+                    console.error("更新失敗:", error);
+                });
+            }
+        }
+
+        // 網頁載入時啟動監聽
+        window.onload = listenForOrders;
+    </script>
+</body>
+</html>
